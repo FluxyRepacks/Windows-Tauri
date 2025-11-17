@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fluxy Repacks</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <h1>🎮 Fluxy Repacks</h1>
+            </div>
+            <ul class="sidebar-menu">
+                <li class="menu-item active" data-view="games">
+                    <span class="icon">🎮</span>
+                    <span>Games</span>
+                </li>
+                <li class="menu-item" data-view="patchnotes">
+                    <span class="icon">📝</span>
+                    <span>Patch Notes</span>
+                </li>
+                <li class="menu-item" data-view="about">
+                    <span class="icon">ℹ️</span>
+                    <span>About</span>
+                </li>
+            </ul>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Games View -->
+            <div id="games-view" class="view active">
+                <div class="view-header">
+                    <h2>Games List <span id="games-count" class="games-count">(0)</span></h2>
+                    <button id="refresh-btn" class="btn-primary">
+                        <span class="icon">🔄</span> Refresh
+                    </button>
+                </div>
+                
+                <!-- Search and Filters -->
+                <div class="search-filter-bar">
+                    <div class="search-box">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="search-input" placeholder="Search for a game..." />
+                        <button id="clear-search" class="clear-btn" style="display: none;">✕</button>
+                    </div>
+                    
+                    <div class="filters">
+                        <select id="genre-filter" class="filter-select">
+                            <option value="">All Genres</option>
+                        </select>
+                        
+                        <select id="sort-filter" class="filter-select">
+                            <option value="recent">Most Recent</option>
+                            <option value="views">Most Viewed</option>
+                            <option value="downloads">Most Downloaded</option>
+                            <option value="name">Name (A-Z)</option>
+                            <option value="size">Size</option>
+                        </select>
+                        
+                        <button id="toggle-view" class="btn-icon" title="Toggle view">
+                            <span id="view-icon">▦</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="loading" class="loading" style="display: none;">
+                    <div class="spinner"></div>
+                    <p>Loading games...</p>
+                </div>
+                <div id="error-message" class="error-message" style="display: none;"></div>
+                
+                <div id="no-results" class="no-results" style="display: none;">
+                    <span class="no-results-icon">🔍</span>
+                    <p>No games found</p>
+                    <button id="reset-filters" class="btn-primary">Reset filters</button>
+                </div>
+                
+                <div id="games-grid" class="games-grid"></div>
+            </div>
+
+            <!-- Patch Notes View -->
+            <div id="patchnotes-view" class="view">
+                <div class="view-header">
+                    <h2>Patch Notes</h2>
+                </div>
+                <div class="content-section">
+                    <div class="patch-note-card">
+                        <div class="patch-header">
+                            <h3>Version 0.1.0</h3>
+                            <span class="date">November 15, 2025</span>
+                        </div>
+                        <ul class="patch-list">
+                            <li>First release of the Tauri application</li>
+                            <li>Complete list of games available on Fluxy Repacks</li>
+                            <li>Real-time search bar</li>
+                            <li>Genre filters and advanced sorting</li>
+                            <li>3 display modes (grid, compact, list)</li>
+                            <li>Support for direct download links</li>
+                            <li>Modern and responsive interface</li>
+                            <li>Screenshot gallery display</li>
+                            <li>View and download statistics</li>
+                            <li>Compatible with Windows, macOS and Linux</li>
+                            <li>Ultra-lightweight native application (~10MB)</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- About View -->
+            <div id="about-view" class="view">
+                <div class="view-header">
+                    <h2>About</h2>
+                </div>
+                <div class="content-section about-content">
+                    <div class="about-icon">🎮</div>
+                    <h1>Fluxy Repacks</h1>
+                    <p class="version">Version 1.0.0 - Tauri Edition</p>
+                    
+                    <div class="about-section">
+                        <h3>Description</h3>
+                        <p>Native Tauri application to browse and download games available on Fluxy Repacks. Enjoy an ultra-lightweight and high-performance app with detailed information, screenshots, and download links.</p>
+                    </div>
+
+                    <div class="about-section">
+                        <h3>Features</h3>
+                        <ul class="features-list">
+                            <li>🔍 Real-time search and advanced filters</li>
+                            <li>📋 Complete game list with custom sorting</li>
+                            <li>ℹ️ Full details and screenshots</li>
+                            <li>⬇️ Direct download links</li>
+                            <li>🌪️ Torrent support (magnet links)</li>
+                            <li>🔄 Real-time refresh</li>
+                            <li>👁️ 3 display modes</li>
+                            <li>⚡ Native performance with Rust</li>
+                            <li>💻 Cross-platform compatible</li>
+                            <li>🪶 Ultra-lightweight (~10MB)</li>
+                        </ul>
+                    </div>
+
+                    <div class="about-section">
+                        <h3>Technologies</h3>
+                        <p>Built with <strong>Tauri</strong>, a modern framework that combines the power of Rust with web flexibility. Result: an ultra-fast and lightweight native application.</p>
+                    </div>
+
+                    <button id="visit-website" class="btn-primary btn-large">
+                        🌐 Visit Website
+                    </button>
+                </div>
+            </div>
+
+            <!-- Game Detail Modal -->
+            <div id="game-detail-modal" class="modal">
+                <div class="modal-content">
+                    <button class="modal-close">&times;</button>
+                    <div id="game-detail-content"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+    <script src="https://unpkg.com/@tauri-apps/api@1.6.0/tauri.min.js"></script>
+
+</body>
+</html>

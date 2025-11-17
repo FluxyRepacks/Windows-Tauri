@@ -1,0 +1,18 @@
+{
+  "name": "fluxytr",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Arizaki",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.9.4"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.9.0"
+  }
+}
