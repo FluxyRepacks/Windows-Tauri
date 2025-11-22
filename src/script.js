@@ -8,7 +8,6 @@ async function initTauri() {
         const shell = await window.__TAURI__.shell;
         tauriOpen = shell.open;
         
-        // Utilise le plugin HTTP de Tauri pour éviter CORS
         const http = await window.__TAURI__.http;
         tauriFetch = http.fetch;
         
@@ -29,10 +28,16 @@ let searchQuery = '';
 let selectedGenre = '';
 let sortBy = 'recent';
 
+// Agent State
+let agentLang = null;
+let agentContext = null;
+let agentData = {};
+
 // API Configuration
 const API_URL = 'https://corsproxy.io/?url=https://fluxyrepacks.xyz/api/games';
+const AGENT_API_URL = 'https://agent.fluxyrepacks.xyz';
 
-// DOM Elements
+// DOM Elements - Existing
 const gamesGrid = document.getElementById('games-grid');
 const loading = document.getElementById('loading');
 const errorMessage = document.getElementById('error-message');
@@ -50,16 +55,29 @@ const gamesCount = document.getElementById('games-count');
 const noResults = document.getElementById('no-results');
 const resetFiltersBtn = document.getElementById('reset-filters');
 
+// DOM Elements - Agent
+const agentToggle = document.getElementById('agent-toggle');
+const agentPanel = document.getElementById('agent-panel');
+const agentClose = document.getElementById('agent-close');
+const langSelection = document.getElementById('lang-selection');
+const agentContent = document.getElementById('agent-content');
+const agentMessages = document.getElementById('agent-messages');
+const agentOptions = document.getElementById('agent-options');
+const agentInputArea = document.getElementById('agent-input-area');
+const agentInput = document.getElementById('agent-input');
+const agentSend = document.getElementById('agent-send');
+const agentBack = document.getElementById('agent-back');
+
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
     await initTauri();
     setupEventListeners();
+    setupAgentListeners();
     fetchGames();
 });
 
 // Event Listeners
 function setupEventListeners() {
-    // Menu navigation
     document.querySelectorAll('.menu-item').forEach(item => {
         item.addEventListener('click', () => {
             const view = item.dataset.view;
@@ -67,24 +85,20 @@ function setupEventListeners() {
         });
     });
 
-    // Refresh button
     refreshBtn.addEventListener('click', fetchGames);
 
-    // Visit website button
     visitWebsiteBtn.addEventListener('click', async () => {
         if (tauriOpen) {
             await tauriOpen('https://fluxyrepacks.xyz');
         }
     });
 
-    // Search input
     searchInput.addEventListener('input', (e) => {
         searchQuery = e.target.value.toLowerCase();
         clearSearchBtn.style.display = searchQuery ? 'flex' : 'none';
         applyFilters();
     });
 
-    // Clear search
     clearSearchBtn.addEventListener('click', () => {
         searchInput.value = '';
         searchQuery = '';
@@ -92,19 +106,16 @@ function setupEventListeners() {
         applyFilters();
     });
 
-    // Genre filter
     genreFilter.addEventListener('change', (e) => {
         selectedGenre = e.target.value;
         applyFilters();
     });
 
-    // Sort filter
     sortFilter.addEventListener('change', (e) => {
         sortBy = e.target.value;
         applyFilters();
     });
 
-    // Toggle view mode
     toggleViewBtn.addEventListener('click', () => {
         const modes = ['grid', 'compact', 'list'];
         const currentIndex = modes.indexOf(gridViewMode);
@@ -112,7 +123,6 @@ function setupEventListeners() {
         updateViewMode();
     });
 
-    // Reset filters
     resetFiltersBtn.addEventListener('click', () => {
         searchInput.value = '';
         searchQuery = '';
@@ -124,7 +134,6 @@ function setupEventListeners() {
         applyFilters();
     });
 
-    // Modal close
     document.querySelector('.modal-close').addEventListener('click', closeModal);
     gameDetailModal.addEventListener('click', (e) => {
         if (e.target === gameDetailModal) {
@@ -132,10 +141,12 @@ function setupEventListeners() {
         }
     });
 
-    // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closeModal();
+            if (agentPanel.classList.contains('active')) {
+                closeAgent();
+            }
         }
         if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
             e.preventDefault();
@@ -148,7 +159,450 @@ function setupEventListeners() {
     });
 }
 
-// View switching
+// Agent Event Listeners
+function setupAgentListeners() {
+    agentToggle.addEventListener('click', toggleAgent);
+    agentClose.addEventListener('click', closeAgent);
+
+    document.querySelectorAll('.lang-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            agentLang = btn.dataset.lang;
+            initAgent();
+        });
+    });
+
+    agentSend.addEventListener('click', sendAgentMessage);
+    agentInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            sendAgentMessage();
+        }
+    });
+
+    agentBack.addEventListener('click', () => {
+        showAgentOptions();
+    });
+}
+
+// Agent Functions
+function toggleAgent() {
+    agentPanel.classList.toggle('active');
+    if (agentPanel.classList.contains('active') && !agentLang) {
+        showLanguageSelection();
+    }
+}
+
+function closeAgent() {
+    agentPanel.classList.remove('active');
+}
+
+function showLanguageSelection() {
+    langSelection.style.display = 'block';
+    agentContent.style.display = 'none';
+}
+
+async function initAgent() {
+    langSelection.style.display = 'none';
+    agentContent.style.display = 'flex';
+    
+    agentMessages.innerHTML = '';
+    agentOptions.innerHTML = '';
+    
+    try {
+        const response = await fetch(`${AGENT_API_URL}/agent/options?lang=${agentLang}`);
+        const data = await response.json();
+        
+        addAgentMessage(data.greeting, 'bot');
+        displayAgentOptions(data.options);
+    } catch (error) {
+        addAgentMessage('Error connecting to agent service. Please try again.', 'error');
+    }
+}
+
+function addAgentMessage(text, type = 'bot') {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `agent-message ${type}`;
+    messageDiv.textContent = text;
+    agentMessages.appendChild(messageDiv);
+    agentMessages.scrollTop = agentMessages.scrollHeight;
+}
+
+function displayAgentOptions(options) {
+    agentOptions.innerHTML = '';
+    agentInputArea.style.display = 'none';
+    
+    options.forEach(option => {
+        const btn = document.createElement('button');
+        btn.className = 'agent-option-btn';
+        btn.textContent = option.label;
+        btn.addEventListener('click', () => handleAgentOption(option));
+        agentOptions.appendChild(btn);
+    });
+}
+
+async function handleAgentOption(option) {
+    agentContext = option.id;
+    agentOptions.innerHTML = '';
+    
+    switch (option.type) {
+        case 'search':
+            showSearchInput();
+            break;
+        case 'genre':
+            await showGenreList();
+            break;
+        case 'action':
+            await handleAgentAction(option.id);
+            break;
+        case 'report':
+            showReportForm();
+            break;
+        case 'suggest':
+            showSuggestForm();
+            break;
+    }
+}
+
+function showSearchInput() {
+    const msg = agentLang === 'fr' 
+        ? 'Entrez le nom du jeu que vous recherchez :' 
+        : 'Enter the name of the game you are looking for:';
+    
+    addAgentMessage(msg, 'bot');
+    agentInputArea.style.display = 'flex';
+    agentInput.placeholder = agentLang === 'fr' ? 'Nom du jeu...' : 'Game name...';
+    agentInput.focus();
+}
+
+async function showGenreList() {
+    addAgentMessage(agentLang === 'fr' ? 'Chargement des genres...' : 'Loading genres...', 'bot');
+    
+    try {
+        const response = await fetch(`${AGENT_API_URL}/agent/genres?lang=${agentLang}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            agentMessages.lastChild.remove();
+            addAgentMessage(data.message, 'bot');
+            
+            data.genres.forEach(genre => {
+                const btn = document.createElement('button');
+                btn.className = 'agent-option-btn';
+                btn.textContent = `🎯 ${genre}`;
+                btn.addEventListener('click', () => searchByGenre(genre));
+                agentOptions.appendChild(btn);
+            });
+        }
+    } catch (error) {
+        addAgentMessage('Error loading genres', 'error');
+    }
+}
+
+async function handleAgentAction(action) {
+    const endpoints = {
+        'most_downloaded': '/agent/most-downloaded',
+        'most_viewed': '/agent/most-viewed',
+        'recent_games': '/agent/recent'
+    };
+    
+    const msg = agentLang === 'fr' ? 'Chargement...' : 'Loading...';
+    addAgentMessage(msg, 'bot');
+    
+    try {
+        const response = await fetch(`${AGENT_API_URL}${endpoints[action]}?lang=${agentLang}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            agentMessages.lastChild.remove();
+            addAgentMessage(data.message, 'bot');
+            displayGameResults(data.results);
+        }
+    } catch (error) {
+        addAgentMessage('Error loading data', 'error');
+    }
+}
+
+async function sendAgentMessage() {
+    const query = agentInput.value.trim();
+    if (!query) return;
+    
+    addAgentMessage(query, 'user');
+    agentInput.value = '';
+    agentInputArea.style.display = 'none';
+    
+    const msg = agentLang === 'fr' ? 'Recherche en cours...' : 'Searching...';
+    addAgentMessage(msg, 'bot');
+    
+    try {
+        const response = await fetch(`${AGENT_API_URL}/agent/search`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query, lang: agentLang })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            agentMessages.lastChild.remove();
+            addAgentMessage(data.message, 'bot');
+            
+            if (data.results.length > 0) {
+                displayGameResults(data.results);
+            }
+        }
+    } catch (error) {
+        addAgentMessage('Search error', 'error');
+    }
+}
+
+async function searchByGenre(genre) {
+    agentOptions.innerHTML = '';
+    
+    const msg = agentLang === 'fr' ? 'Recherche en cours...' : 'Searching...';
+    addAgentMessage(msg, 'bot');
+    
+    try {
+        const response = await fetch(`${AGENT_API_URL}/agent/genre`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ genre, lang: agentLang })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            agentMessages.lastChild.remove();
+            addAgentMessage(data.message, 'bot');
+            
+            if (data.results.length > 0) {
+                displayGameResults(data.results);
+            }
+        }
+    } catch (error) {
+        addAgentMessage('Search error', 'error');
+    }
+}
+
+function displayGameResults(results) {
+    results.forEach(game => {
+        const resultDiv = document.createElement('div');
+        resultDiv.className = 'agent-game-result';
+        
+        const titleDiv = document.createElement('div');
+        titleDiv.className = 'agent-game-result-title';
+        titleDiv.textContent = game.name;
+        
+        const descDiv = document.createElement('div');
+        descDiv.className = 'agent-game-result-desc';
+        descDiv.textContent = game.description;
+        
+        const metaDiv = document.createElement('div');
+        metaDiv.className = 'agent-game-result-meta';
+        metaDiv.innerHTML = `
+            <span>👁️ ${game.views}</span>
+            <span>⬇️ ${game.downloads}</span>
+            <span>📦 ${game.size}</span>
+        `;
+        
+        const genresDiv = document.createElement('div');
+        genresDiv.className = 'agent-genres';
+        game.genre.slice(0, 3).forEach(g => {
+            const tag = document.createElement('span');
+            tag.className = 'agent-genre-tag';
+            tag.textContent = g;
+            genresDiv.appendChild(tag);
+        });
+        
+        resultDiv.appendChild(titleDiv);
+        resultDiv.appendChild(descDiv);
+        resultDiv.appendChild(metaDiv);
+        resultDiv.appendChild(genresDiv);
+        
+        resultDiv.addEventListener('click', () => {
+            const fullGame = games.find(g => g._id === game._id);
+            if (fullGame) {
+                closeAgent();
+                showGameDetail(fullGame);
+            }
+        });
+        
+        agentOptions.appendChild(resultDiv);
+    });
+    
+    addBackButton();
+}
+
+function showReportForm() {
+    const labels = {
+        en: {
+            title: 'Report a broken link',
+            gameName: 'Game name',
+            gameId: 'Game ID (optional)',
+            link: 'Broken link URL',
+            comment: 'Additional comment',
+            submit: 'Send report'
+        },
+        fr: {
+            title: 'Signaler un lien mort',
+            gameName: 'Nom du jeu',
+            gameId: 'ID du jeu (optionnel)',
+            link: 'URL du lien mort',
+            comment: 'Commentaire additionnel',
+            submit: 'Envoyer le rapport'
+        }
+    };
+    
+    const l = labels[agentLang];
+    
+    addAgentMessage(l.title, 'bot');
+    
+    const form = document.createElement('div');
+    form.innerHTML = `
+        <div class="agent-form-group">
+            <label>${l.gameName}</label>
+            <input type="text" id="report-game-name" required>
+        </div>
+        <div class="agent-form-group">
+            <label>${l.gameId}</label>
+            <input type="text" id="report-game-id">
+        </div>
+        <div class="agent-form-group">
+            <label>${l.link}</label>
+            <input type="url" id="report-link-url">
+        </div>
+        <div class="agent-form-group">
+            <label>${l.comment}</label>
+            <textarea id="report-comment"></textarea>
+        </div>
+        <button class="agent-submit-btn" id="submit-report">${l.submit}</button>
+    `;
+    
+    agentOptions.appendChild(form);
+    
+    document.getElementById('submit-report').addEventListener('click', async () => {
+        const data = {
+            gameName: document.getElementById('report-game-name').value,
+            gameId: document.getElementById('report-game-id').value,
+            linkUrl: document.getElementById('report-link-url').value,
+            userComment: document.getElementById('report-comment').value,
+            lang: agentLang
+        };
+        
+        if (!data.gameName) {
+            addAgentMessage(agentLang === 'fr' ? 'Veuillez entrer le nom du jeu' : 'Please enter the game name', 'error');
+            return;
+        }
+        
+        try {
+            const response = await fetch(`${AGENT_API_URL}/agent/report`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                agentOptions.innerHTML = '';
+                addAgentMessage(result.message, 'success');
+                addBackButton();
+            }
+        } catch (error) {
+            addAgentMessage('Error sending report', 'error');
+        }
+    });
+    
+    addBackButton();
+}
+
+function showSuggestForm() {
+    const labels = {
+        en: {
+            title: 'Suggest a game',
+            gameName: 'Game name',
+            link: 'Game link (Steam, official website, etc.)',
+            description: 'Description or additional information',
+            submit: 'Send suggestion'
+        },
+        fr: {
+            title: 'Proposer un jeu',
+            gameName: 'Nom du jeu',
+            link: 'Lien du jeu (Steam, site officiel, etc.)',
+            description: 'Description ou informations supplémentaires',
+            submit: 'Envoyer la suggestion'
+        }
+    };
+    
+    const l = labels[agentLang];
+    
+    addAgentMessage(l.title, 'bot');
+    
+    const form = document.createElement('div');
+    form.innerHTML = `
+        <div class="agent-form-group">
+            <label>${l.gameName}</label>
+            <input type="text" id="suggest-game-name" required>
+        </div>
+        <div class="agent-form-group">
+            <label>${l.link}</label>
+            <input type="url" id="suggest-game-link">
+        </div>
+        <div class="agent-form-group">
+            <label>${l.description}</label>
+            <textarea id="suggest-description"></textarea>
+        </div>
+        <button class="agent-submit-btn" id="submit-suggest">${l.submit}</button>
+    `;
+    
+    agentOptions.appendChild(form);
+    
+    document.getElementById('submit-suggest').addEventListener('click', async () => {
+        const data = {
+            gameName: document.getElementById('suggest-game-name').value,
+            gameLink: document.getElementById('suggest-game-link').value,
+            description: document.getElementById('suggest-description').value,
+            lang: agentLang
+        };
+        
+        if (!data.gameName) {
+            addAgentMessage(agentLang === 'fr' ? 'Veuillez entrer le nom du jeu' : 'Please enter the game name', 'error');
+            return;
+        }
+        
+        try {
+            const response = await fetch(`${AGENT_API_URL}/agent/suggest`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                agentOptions.innerHTML = '';
+                addAgentMessage(result.message, 'success');
+                addBackButton();
+            }
+        } catch (error) {
+            addAgentMessage('Error sending suggestion', 'error');
+        }
+    });
+    
+    addBackButton();
+}
+
+function addBackButton() {
+    const backBtn = document.createElement('button');
+    backBtn.className = 'agent-option-btn';
+    backBtn.textContent = agentLang === 'fr' ? '← Retour au menu' : '← Back to menu';
+    backBtn.addEventListener('click', showAgentOptions);
+    agentOptions.appendChild(backBtn);
+}
+
+function showAgentOptions() {
+    initAgent();
+}
+
+// Existing Functions
 function switchView(view) {
     currentView = view;
     
@@ -161,7 +615,6 @@ function switchView(view) {
     });
 }
 
-// Fetch games from API
 async function fetchGames() {
     loading.style.display = 'block';
     errorMessage.style.display = 'none';
@@ -170,7 +623,6 @@ async function fetchGames() {
     try {
         console.log('Fetching games from API...');
         
-        // Utilise l'API HTTP de Tauri si disponible, sinon fetch natif
         const fetchFunc = tauriFetch || window.fetch.bind(window);
         const response = await fetchFunc(API_URL, {
             method: 'GET',
@@ -183,7 +635,7 @@ async function fetchGames() {
         console.log('Response received:', response);
 
         if (!response.ok) {
-            throw new Error(`Erreur HTTP: ${response.status}`);
+            throw new Error(`HTTP Error: ${response.status}`);
         }
 
         const data = await response.json();
@@ -195,17 +647,16 @@ async function fetchGames() {
             populateGenreFilter();
             applyFilters();
         } else {
-            throw new Error('Format de données invalide');
+            throw new Error('Invalid data format');
         }
     } catch (error) {
-        console.error('Erreur lors du chargement:', error);
-        showError(`Impossible de charger les jeux: ${error.message}`);
+        console.error('Loading error:', error);
+        showError(`Unable to load games: ${error.message}`);
     } finally {
         loading.style.display = 'none';
     }
 }
 
-// Populate genre filter dropdown
 function populateGenreFilter() {
     const genres = new Set();
     games.forEach(game => {
@@ -214,7 +665,7 @@ function populateGenreFilter() {
 
     const sortedGenres = Array.from(genres).sort();
     
-    genreFilter.innerHTML = '<option value="">Tous les genres</option>';
+    genreFilter.innerHTML = '<option value="">All Genres</option>';
     sortedGenres.forEach(genre => {
         const option = document.createElement('option');
         option.value = genre;
@@ -223,11 +674,9 @@ function populateGenreFilter() {
     });
 }
 
-// Apply filters and sorting
 function applyFilters() {
     let filtered = [...games];
 
-    // Search filter
     if (searchQuery) {
         filtered = filtered.filter(game => 
             game.name.toLowerCase().includes(searchQuery) ||
@@ -237,14 +686,12 @@ function applyFilters() {
         );
     }
 
-    // Genre filter
     if (selectedGenre) {
         filtered = filtered.filter(game => 
             game.genre.includes(selectedGenre)
         );
     }
 
-    // Sort
     filtered.sort((a, b) => {
         switch (sortBy) {
             case 'views':
@@ -266,7 +713,6 @@ function applyFilters() {
     displayGames(filtered);
 }
 
-// Parse size string to number
 function parseSize(sizeStr) {
     const match = sizeStr.match(/(\d+\.?\d*)\s*(gb|mb|kb)/i);
     if (!match) return 0;
@@ -282,12 +728,10 @@ function parseSize(sizeStr) {
     }
 }
 
-// Update games count
 function updateGamesCount() {
     gamesCount.textContent = `(${filteredGames.length}${filteredGames.length !== games.length ? ` / ${games.length}` : ''})`;
 }
 
-// Update view mode
 function updateViewMode() {
     gamesGrid.className = 'games-grid';
     
@@ -307,7 +751,6 @@ function updateViewMode() {
     }
 }
 
-// Display games in grid
 function displayGames(gamesArray) {
     gamesGrid.innerHTML = '';
     noResults.style.display = 'none';
@@ -323,7 +766,6 @@ function displayGames(gamesArray) {
     });
 }
 
-// Create game card element
 function createGameCard(game) {
     const card = document.createElement('div');
     card.className = 'game-card';
@@ -357,7 +799,6 @@ function createGameCard(game) {
     return card;
 }
 
-// Show game detail modal
 function showGameDetail(game) {
     const imageUrl = game.imageUrl ? `http://${game.imageUrl}` : '';
     
@@ -377,7 +818,7 @@ function showGameDetail(game) {
 
     const linksHtml = game.links && game.links.length > 0
         ? `
-            <h4 style="color: #fff; margin-bottom: 10px;">Liens directs:</h4>
+            <h4 style="color: #fff; margin-bottom: 10px;">Direct links:</h4>
             ${game.links.map(link => `
                 <a href="#" class="download-link" data-url="${link}">
                     <span>🔗</span>
@@ -393,7 +834,7 @@ function showGameDetail(game) {
             ${game.torrentLinks.map(torrent => `
                 <a href="#" class="download-link torrent" data-magnet="magnet:?xt=urn:btih:${torrent}">
                     <span>🌪️</span>
-                    <span>Ouvrir avec client torrent</span>
+                    <span>Open with torrent client</span>
                 </a>
             `).join('')}
         `
@@ -406,8 +847,8 @@ function showGameDetail(game) {
         <h1 class="detail-title">${escapeHtml(game.name)}</h1>
         
         <div class="detail-stats">
-            <span>👁️ ${game.views} vues</span>
-            <span>⬇️ ${game.downloads} téléchargements</span>
+            <span>👁️ ${game.views} views</span>
+            <span>⬇️ ${game.downloads} downloads</span>
         </div>
 
         <div class="detail-section">
@@ -418,7 +859,7 @@ function showGameDetail(game) {
         <div class="detail-section">
             <div class="detail-info-grid">
                 <div class="info-item">
-                    <span class="info-label">Taille:</span>
+                    <span class="info-label">Size:</span>
                     <span class="info-value">${game.size}</span>
                 </div>
                 <div class="info-item">
@@ -430,7 +871,7 @@ function showGameDetail(game) {
                     <span class="info-value">${game.cracker}</span>
                 </div>
                 <div class="info-item">
-                    <span class="info-label">Auteur:</span>
+                    <span class="info-label">Author:</span>
                     <span class="info-value">${game.author.username}</span>
                 </div>
                 <div class="info-item">
@@ -438,8 +879,8 @@ function showGameDetail(game) {
                     <span class="info-value">${game.steamId || 'N/A'}</span>
                 </div>
                 <div class="info-item">
-                    <span class="info-label">En ligne:</span>
-                    <span class="info-value">${game.isOnline ? 'Oui' : 'Non'}</span>
+                    <span class="info-label">Online:</span>
+                    <span class="info-value">${game.isOnline ? 'Yes' : 'No'}</span>
                 </div>
             </div>
         </div>
@@ -454,14 +895,13 @@ function showGameDetail(game) {
         ${screenshotsHtml}
 
         <div class="detail-section download-section">
-            <h3>Téléchargements</h3>
+            <h3>Downloads</h3>
             <div class="download-links">
-                ${linksHtml || torrentsHtml ? linksHtml + torrentsHtml : '<p style="color: #777; font-style: italic;">Aucun lien de téléchargement disponible</p>'}
+                ${linksHtml || torrentsHtml ? linksHtml + torrentsHtml : '<p style="color: #777; font-style: italic;">No download links available</p>'}
             </div>
         </div>
     `;
 
-    // Add click handlers to download links
     gameDetailContent.querySelectorAll('.download-link').forEach(link => {
         link.addEventListener('click', async (e) => {
             e.preventDefault();
@@ -475,18 +915,15 @@ function showGameDetail(game) {
     gameDetailModal.classList.add('active');
 }
 
-// Close modal
 function closeModal() {
     gameDetailModal.classList.remove('active');
 }
 
-// Show error message
 function showError(message) {
     errorMessage.textContent = message;
     errorMessage.style.display = 'block';
 }
 
-// Utility functions
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
@@ -498,6 +935,6 @@ function extractDomain(url) {
         const urlObj = new URL(url);
         return urlObj.hostname;
     } catch {
-        return 'Télécharger';
+        return 'Download';
     }
 }
